@@ -1,0 +1,15 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# We set PYTHONPATH so imports work easily
+ENV PYTHONPATH=/app
+
+COPY ./app ./vehicle_scheduler_be/app
+
+EXPOSE 8000
+
+CMD ["uvicorn", "vehicle_scheduler_be.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
