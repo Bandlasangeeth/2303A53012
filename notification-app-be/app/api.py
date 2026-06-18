@@ -1,31 +1,58 @@
 import httpx
-from typing import List, Optional
+from typing import List
 from fastapi import APIRouter, HTTPException
 
 from notification_app_be.app.config import settings
-from notification_app_be.app.priority_inbox import get_top_k_notifications, Notification
+from notification_app_be.app.priority_inbox import (
+    get_top_k_notifications,
+    Notification,
+)
 
-router = APIRouter()
+notification_router = APIRouter()
 
-async def fetch_notifications() -> List[dict]:
-    """Fetch notifications from the evaluation service."""
-    headers = {"Authorization": f"Bearer {settings.ACCESS_TOKEN}"} if settings.ACCESS_TOKEN else {}
-    url = f"{settings.EVALUATION_API_BASE_URL}/evaluation-service/notifications"
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers)
-        if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail=f"Failed to fetch notifications: {response.text}")
-        data = response.json()
-        return data.get("notifications", [])
 
-@router.get("/notifications/priority", response_model=List[Notification])
-async def get_priority_inbox(n: int = 10):
+async def load_notifications() -> List[dict]:
+    """Retrieve notification data from the evaluation endpoint."""
+
+    auth_headers = (
+        {"Authorization": f"Bearer {settings.ACCESS_TOKEN}"}
+        if settings.ACCESS_TOKEN
+        else {}
+    )
+
+    endpoint_url = (
+        f"{settings.EVALUATION_API_BASE_URL}/evaluation-service/notifications"
+    )
+
+    async with httpx.AsyncClient() as session:
+        result = await session.get(endpoint_url, headers=auth_headers)
+
+        if result.status_code != 200:
+            raise HTTPException(
+                status_code=result.status_code,
+                detail=f"Failed to fetch notifications: {result.text}",
+            )
+
+        payload = result.json()
+        return payload.get("notifications", [])
+
+
+@notification_router.get(
+    "/notifications/priority",
+    response_model=List[Notification]
+)
+async def fetch_priority_notifications(limit: int = 10):
     """
-    Returns the top 'n' most important unread notifications.
-    Priority is determined by Notification Type and Recency.
+    Retrieve the highest-priority unread notifications.
+
+    Ranking considers notification category and recency.
     Complexity: O(N log K)
     """
-    raw_notifications = await fetch_notifications()
-    top_notifications = get_top_k_notifications(raw_notifications, k=n)
-    return top_notifications
+
+    notifications = await load_notifications()
+    prioritized_items = get_top_k_notifications(
+        notifications,
+        k=limit
+    )
+
+    return prioritized_items
